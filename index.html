@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netra Namdam - Premium Video Content</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-left">
+            <span class="logo">NETRA_NAMDAM</span>
+        </div>
+        <div class="navbar-right">
+            <div class="theme-switch-wrapper">
+                <label class="theme-switch">
+                    <input type="checkbox" id="theme-toggle">
+                    <span class="slider">
+                        <i class="fas fa-sun sun"></i>
+                        <i class="fas fa-moon moon"></i>
+                    </span>
+                </label>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <div class="loading" id="loading">
+            <div class="folders-container">
+                <!-- Advanced Skeleton Loading -->
+                <div class="folder-card">
+                    <div class="folder-name">
+                        <div class="skeleton skeleton-text" style="width: 60%"></div>
+                        <div class="skeleton skeleton-text" style="width: 25%"></div>
+                    </div>
+                    <div class="folder-info">
+                        <div class="skeleton skeleton-text" style="width: 90%"></div>
+                        <div class="skeleton skeleton-text" style="width: 80%"></div>
+                        <div class="skeleton skeleton-text" style="width: 70%"></div>
+                        <div class="skeleton skeleton-text" style="width: 60%"></div>
+                    </div>
+                    <div class="skeleton skeleton-button"></div>
+                </div>
+                <div class="folder-card">
+                    <div class="folder-name">
+                        <div class="skeleton skeleton-text" style="width: 70%"></div>
+                        <div class="skeleton skeleton-text" style="width: 20%"></div>
+                    </div>
+                    <div class="folder-info">
+                        <div class="skeleton skeleton-text" style="width: 85%"></div>
+                        <div class="skeleton skeleton-text" style="width: 75%"></div>
+                        <div class="skeleton skeleton-text" style="width: 65%"></div>
+                    </div>
+                    <div class="skeleton skeleton-button"></div>
+                </div>
+                <div class="folder-card">
+                    <div class="folder-name">
+                        <div class="skeleton skeleton-text" style="width: 50%"></div>
+                        <div class="skeleton skeleton-text" style="width: 30%"></div>
+                    </div>
+                    <div class="folder-info">
+                        <div class="skeleton skeleton-text" style="width: 95%"></div>
+                        <div class="skeleton skeleton-text" style="width: 65%"></div>
+                    </div>
+                    <div class="skeleton skeleton-button"></div>
+                </div>
+            </div>
+        </div>
+        <div class="error" id="error" style="display: none;"></div>
+        <div class="folders-container" id="folders-container"></div>
+    </main>
+
+    <footer class="footer">
+        <p>A project by YTech– coded with care and debugged with determination</p>
+    </footer>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+        import { 
+            getFirestore, 
+            collection,
+            onSnapshot,
+            query,
+            where,
+            orderBy,
+            doc,
+            setDoc,
+            getDoc,
+            serverTimestamp,
+            increment
+        } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyAIpdTf6repxrQjMRlDw7ugzsDUn5qoij0",
+            authDomain: "instavideos-c7314.firebaseapp.com",
+            projectId: "instavideos-c7314",
+            storageBucket: "instavideos-c7314.appspot.com",
+            messagingSenderId: "614080408697",
+            appId: "1:614080408697:web:f78ec237f1f598d416b8a8",
+            measurementId: "G-3JX6PHEJ7C"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Track existing folders to manage updates
+        const foldersMap = new Map();
+        let currentFilter = "all";
+        let unsubscribe = null;
+        
+        // Time tracking variables
+        let totalSeconds = 0;
+        let isActive = true;
+        let timerInterval;
+        let dbUpdateInterval;
+        let lastUpdateTime = 0;
+        let lastActivityTime = Date.now();
+        const INACTIVITY_THRESHOLD = 1000; // 1 seconds
+        
+        // Theme Management
+        function setupThemeToggle() {
+            const themeToggle = document.getElementById('theme-toggle');
+            const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+            
+            // Set initial theme
+            if (localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && prefersDarkScheme.matches)) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                themeToggle.checked = true;
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+                themeToggle.checked = false;
+            }
+            
+            // Toggle theme
+            themeToggle.addEventListener('change', function() {
+                if (this.checked) {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    document.documentElement.setAttribute('data-theme', 'light');
+                    localStorage.setItem('theme', 'light');
+                }
+                document.dispatchEvent(new Event('themeChanged'));
+            });
+            
+            // Watch for system theme changes
+            prefersDarkScheme.addEventListener('change', e => {
+                if (!localStorage.getItem('theme')) {
+                    if (e.matches) {
+                        document.documentElement.setAttribute('data-theme', 'dark');
+                        themeToggle.checked = true;
+                    } else {
+                        document.documentElement.setAttribute('data-theme', 'light');
+                        themeToggle.checked = false;
+                    }
+                }
+            });
+        }
+        
+        function generateUniqueId() {
+            const num = Math.floor(10000000 + Math.random() * 90000000);
+            return String(num).padStart(8, '0');
+        }
+        
+        // Get or create device ID
+        function getDeviceId() {
+            let deviceId = localStorage.getItem('netra_namdam_device_id');
+            if (!deviceId) {
+                deviceId = generateUniqueId();
+                localStorage.setItem('netra_namdam_device_id', deviceId);
+            }
+            return deviceId;
+        }
+        
+        // Check for user activity
+        function setupActivityMonitoring() {
+            const activityEvents = ['mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
+            
+            activityEvents.forEach(eventName => {
+                window.addEventListener(eventName, () => {
+                    lastActivityTime = Date.now();
+                    if (!isActive) {
+                        isActive = true;
+                        console.log('User became active');
+                    }
+                });
+            });
+            
+            // Check for inactivity periodically
+            setInterval(() => {
+                const now = Date.now();
+                if (isActive && (now - lastActivityTime) > INACTIVITY_THRESHOLD) {
+                    isActive = false;
+                    console.log('User became inactive');
+                }
+            }, 1000000);
+        }
+        
+        // Update time in Firebase
+        async function updateTimeInFirebase() {
+            try {
+                const deviceId = getDeviceId();
+                const folderName = window.location.pathname.split('/').pop() || 'NETRA_NAMDAM';
+                const timeSinceLastUpdate = totalSeconds - lastUpdateTime;
+                
+                console.log(`Updating Firebase with ${timeSinceLastUpdate} seconds since last update`);
+                
+                const metadataUpdate = {
+                    [deviceId]: {
+                        last_viewed: serverTimestamp(),
+                        time_count: increment(timeSinceLastUpdate)
+                    }
+                };
+        
+                const docRef = doc(db, 'MetaData', folderName);
+                await setDoc(docRef, metadataUpdate, { merge: true });
+                lastUpdateTime = totalSeconds;
+            } catch (error) {
+                console.error('Error updating time:', error);
+            }
+        }
+        
+        // Start tracking time
+        function startTimeTracking() {
+            console.log('Starting time tracking...');
+            
+            if (timerInterval) clearInterval(timerInterval);
+            if (dbUpdateInterval) clearInterval(dbUpdateInterval);
+        
+            timerInterval = setInterval(() => {
+                if (isActive) {
+                    totalSeconds++;
+                    localStorage.setItem('time_count_cache', totalSeconds);
+                    console.log(`Time elapsed: ${totalSeconds} seconds`);
+                }
+            }, 1000);
+        
+            dbUpdateInterval = setInterval(() => {
+                if (isActive && totalSeconds > lastUpdateTime) {
+                    updateTimeInFirebase();
+                }
+            }, 1000);
+        }
+        
+        async function initTimeTracking() {
+            try {
+                const deviceId = getDeviceId();
+                const folderName = window.location.pathname.split('/').pop() || 'NETRA_NAMDAM';
+                const docRef = doc(db, 'MetaData', folderName);
+        
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const deviceData = docSnap.data()[deviceId];
+                    if (deviceData && typeof deviceData.time_count === 'number') {
+                        totalSeconds = deviceData.time_count;
+                        console.log(`Resuming from ${totalSeconds} seconds`);
+                    } else {
+                        totalSeconds = 0;
+                        console.log('No time_count found, starting from 0');
+                    }
+                } else {
+                    totalSeconds = 0;
+                    console.log('No document found, starting from 0');
+                }
+        
+                lastUpdateTime = totalSeconds;
+                localStorage.setItem('time_count_cache', totalSeconds);
+        
+                startTimeTracking();
+                setupActivityMonitoring();
+        
+                document.addEventListener('visibilitychange', handleVisibilityChange);
+                window.addEventListener('beforeunload', handlePageUnload);
+            } catch (error) {
+                console.error('Error initializing time tracking:', error);
+            }
+        }
+        
+        function handleVisibilityChange() {
+            if (document.hidden) {
+                console.log('⏸ Tab hidden - pausing timer');
+                isActive = false;
+                updateTimeInFirebase(); // save the last bit of time
+            } else {
+                console.log('▶️ Tab visible - resuming timer');
+                isActive = true;
+                lastActivityTime = Date.now(); // reset activity timer
+            }
+        }
+        
+        function handlePageUnload() {
+            console.log('Page unloading - final update');
+            updateTimeInFirebase();
+            
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('beforeunload', handlePageUnload);
+            
+            if (timerInterval) clearInterval(timerInterval);
+            if (dbUpdateInterval) clearInterval(dbUpdateInterval);
+        }
+        
+        async function storeMetadata() {
+            try {
+                const deviceId = getDeviceId();
+                const folderName = window.location.pathname.split('/').pop() || 'NETRA_NAMDAM';
+                const docRef = doc(db, 'MetaData', folderName);
+
+                // Always fetch location data (removed the first-time check)
+                let locationData = {};
+                try {
+                    const response = await fetch('https://ipinfo.io/json?token=e3a94829c6b1c4');
+                    if (response.ok) {
+                        const data = await response.json();
+                        locationData = {
+                            location: {
+                                ip: data.ip,
+                                city: data.city,
+                                region: data.region,
+                                country: data.country,
+                                loc: data.loc, // latitude,longitude
+                                timezone: data.timezone,
+                                postal: data.postal,
+                                last_updated: serverTimestamp() // Add timestamp for each update
+                            }
+                        };
+                        console.log('Location data fetched:', locationData);
+                    }
+                } catch (error) {
+                    console.error('Error fetching location:', error);
+                    // Continue without location data if there's an error
+                }
+
+                const updateData = {
+                    last_viewed: serverTimestamp(),
+                    count_page_opened: increment(1),
+                    ...locationData
+                };
+
+                // Check if we need to set the initial opened_at timestamp
+                const existingDoc = await getDoc(docRef);
+                const deviceData = existingDoc.exists() ? existingDoc.data()[deviceId] : null;
+                
+                if (!deviceData || !deviceData.page_opened_at) {
+                    updateData.page_opened_at = serverTimestamp();
+                }
+                
+                if (!deviceData || typeof deviceData.time_count !== 'number') {
+                    updateData.time_count = 0;
+                }
+
+                const metadataUpdate = {
+                    [deviceId]: updateData
+                };
+
+                await setDoc(docRef, metadataUpdate, { merge: true });
+
+                console.log('Metadata stored, initializing time tracking');
+                initTimeTracking();
+            } catch (error) {
+                console.error('Error storing metadata:', error);
+            }
+        }
+        
+        async function trackFolderClick(folderName) {
+            try {
+                const deviceId = getDeviceId();
+                const currentPage = window.location.pathname.split('/').pop() || 'NETRA_NAMDAM';
+                const docRef = doc(db, 'MetaData', currentPage);
+
+                const updateData = {
+                    [folderName]: increment(1),
+                    last_clicked: serverTimestamp()
+                };
+
+                await setDoc(docRef, {
+                    [deviceId]: updateData
+                }, { merge: true });
+
+                console.log(`✅ Click on "${folderName}" recorded under device "${deviceId}"`);
+            } catch (error) {
+                console.error("❌ Error tracking folder click:", error);
+            }
+        }
+        
+        function createFolderCard(doc) {
+            const data = doc.data();
+            const folderElement = document.createElement('div');
+            folderElement.className = `folder-card ${data.premium === "yes" ? "premium" : "free"}`;
+            folderElement.id = `folder-${doc.id}`;
+        
+            // Tilt effect
+            folderElement.addEventListener('mousemove', (e) => {
+                const x = e.clientX - e.target.getBoundingClientRect().left;
+                const y = e.clientY - e.target.getBoundingClientRect().top;
+                const centerX = e.target.offsetWidth / 2;
+                const centerY = e.target.offsetHeight / 2;
+                const angleX = (y - centerY) / 20;
+                const angleY = (centerX - x) / 20;
+                folderElement.style.transform = `perspective(1000px) rotateX(${angleX}deg) rotateY(${angleY}deg)`;
+            });
+            folderElement.addEventListener('mouseleave', () => {
+                folderElement.style.transform = 'perspective(1000px) rotateX(0) rotateY(0)';
+            });
+        
+            const nameElement = document.createElement('div');
+            nameElement.className = 'folder-name';
+            nameElement.textContent = doc.id;
+        
+            if (data.premium === "yes") {
+                const premiumTag = document.createElement('span');
+                premiumTag.className = 'premium-tag';
+                premiumTag.textContent = 'PREMIUM';
+                nameElement.appendChild(premiumTag);
+            }
+            
+            // Add image if imgUrl exists in the document
+            if (data.imgUrl) {
+                const imgElement = document.createElement('img');
+                imgElement.src = data.imgUrl;
+                imgElement.alt = doc.id;
+                imgElement.className = 'folder-image';
+                folderElement.appendChild(imgElement);
+            }
+        
+            folderElement.appendChild(nameElement);
+        
+            if (data.description) {
+                const descElement = document.createElement('div');
+                descElement.className = 'folder-info';
+                descElement.textContent = data.description;
+                folderElement.appendChild(descElement);
+            }
+        
+            if (data.createdAt) {
+                const dateElement = document.createElement('div');
+                dateElement.className = 'folder-date';
+        
+                const calendarIcon = document.createElement('i');
+                calendarIcon.className = 'far fa-calendar-alt';
+                dateElement.appendChild(calendarIcon);
+        
+                const date = data.createdAt.toDate();
+                dateElement.appendChild(document.createTextNode(date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                })));
+        
+                folderElement.appendChild(dateElement);
+            }
+        
+            // Always create a view button for each folder
+            const viewButton = document.createElement('div');
+            viewButton.className = 'link-button';
+            
+            const icon = document.createElement('i');
+            icon.className = data.premium === "yes" ? 'fas fa-crown' : 'fas fa-play';
+            const text = document.createTextNode('View');
+            
+            viewButton.appendChild(icon);
+            viewButton.appendChild(text);
+            
+            viewButton.addEventListener('click', async function(e) {
+                e.preventDefault();
+                
+                // Create a unique session ID for this viewing session
+                const sessionId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+                
+                // Prepare the data to pass to the free page
+                const videoData = {
+                    folderName: doc.id,
+                    embedCode: data.embedCode || '',
+                    isPremium: data.premium === "yes",
+                    deviceId: getDeviceId(),
+                    sessionId: sessionId,
+                    timestamp: new Date().toISOString()
+                };
+                
+                // Store the data in localStorage
+                localStorage.setItem('currentVideoSession', JSON.stringify(videoData));
+                
+                // Track the click in Firebase
+                await trackFolderClick(doc.id);
+                
+                // Open the appropriate player page in a new tab
+                const playerPage = data.premium === "yes" ? 'premium.html' : 'free.html';
+                window.open(playerPage, '_blank');
+            });
+            
+            folderElement.appendChild(viewButton);
+        
+            return folderElement;
+        }
+        
+        function updateFolderDisplay(doc) {
+            const data = doc.data();
+            const folderId = doc.id;
+            const foldersContainer = document.getElementById('folders-container');
+            const existingFolder = document.getElementById(`folder-${folderId}`);
+        
+            if (data.display === "off") {
+                if (existingFolder) {
+                    foldersContainer.removeChild(existingFolder);
+                    foldersMap.delete(folderId);
+                }
+                return;
+            }
+        
+            const isPremium = data.premium === "yes";
+            if (currentFilter === "premium" && !isPremium) {
+                if (existingFolder) {
+                    foldersContainer.removeChild(existingFolder);
+                    foldersMap.delete(folderId);
+                }
+                return;
+            }
+            if (currentFilter === "free" && isPremium) {
+                if (existingFolder) {
+                    foldersContainer.removeChild(existingFolder);
+                    foldersMap.delete(folderId);
+                }
+                return;
+            }
+        
+            if (existingFolder) {
+                foldersContainer.replaceChild(createFolderCard(doc), existingFolder);
+            } else {
+                foldersContainer.appendChild(createFolderCard(doc));
+            }
+            
+            foldersMap.set(folderId, true);
+        }
+        
+        function loadFolders(filter = "all") {
+            const loadingElement = document.getElementById('loading');
+            const errorElement = document.getElementById('error');
+            const foldersContainer = document.getElementById('folders-container');
+            
+            try {
+                foldersContainer.innerHTML = '';
+                errorElement.style.display = 'none';
+                loadingElement.style.display = 'block';
+                
+                if (unsubscribe) unsubscribe();
+                
+                let q;
+                if (filter === "premium") {
+                    q = query(
+                        collection(db, 'content'),
+                        where("premium", "==", "yes"),
+                        orderBy("createdAt", "desc")
+                    );
+                } else if (filter === "free") {
+                    q = query(
+                        collection(db, 'content'),
+                        where("premium", "in", ["no", null]),
+                        orderBy("createdAt", "desc")
+                    );
+                } else {
+                    q = query(
+                        collection(db, 'content'),
+                        orderBy("createdAt", "desc")
+                    );
+                }
+                
+                unsubscribe = onSnapshot(q, (querySnapshot) => {
+                    loadingElement.style.display = 'none';
+                    console.log(`Documents fetched: ${querySnapshot.size}`);
+                    querySnapshot.docChanges().forEach((change) => {
+                        if (change.type === "added" || change.type === "modified") {
+                            updateFolderDisplay(change.doc);
+                        } else if (change.type === "removed") {
+                            const folderId = change.doc.id;
+                            const existingFolder = document.getElementById(`folder-${folderId}`);
+                            if (existingFolder) {
+                                foldersContainer.removeChild(existingFolder);
+                                foldersMap.delete(folderId);
+                            }
+                        }
+                    });
+                }, (error) => {
+                    console.error('Error loading folders:', error);
+                    loadingElement.style.display = 'none';
+                    errorElement.style.display = 'block';
+                    errorElement.textContent = `Error loading folders: ${error.message}`;
+                });
+            } catch (error) {
+                console.error('Error setting up listener:', error);
+                loadingElement.style.display = 'none';
+                errorElement.style.display = 'block';
+                errorElement.textContent = `Error: ${error.message}`;
+            }
+        }
+        
+        function setupFilterButtons() {
+            const filterButtons = document.querySelectorAll('.filter-btn');
+            filterButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    filterButtons.forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                    currentFilter = button.dataset.filter;
+                    loadFolders(currentFilter);
+                });
+            });
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            setupThemeToggle();
+            storeMetadata();
+            loadFolders();
+            setupFilterButtons();
+            
+            window.addEventListener('beforeunload', () => {
+                if (unsubscribe) unsubscribe();
+            });
+        });
+    </script>
+</body>
+</html>

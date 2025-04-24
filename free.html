@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Player</title>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <link rel="stylesheet" href="free.css">
+</head>
+<body>
+    <!-- Navbar Section -->
+    <nav class="navbar">
+        <div class="logo">netra_nandam</div>
+        <div id="device-id-display" class="device-id">Loading...</div>
+        <div class="theme-switch-wrapper">
+            <label class="theme-switch">
+                <input type="checkbox" id="dark-mode-toggle">
+                <span class="slider">
+                    <i class="fas fa-sun sun"></i>
+                    <i class="fas fa-moon moon"></i>
+                </span>
+            </label>
+        </div>
+    </nav>
+
+    <!-- Body Section -->
+    <div class="body-content">
+        <div id="main-content">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading video...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer Section -->
+    <footer class="footer">
+        <p>A project by YTech– coded with care and debugged with determination</p>
+    </footer>
+
+    <!-- Side Notification -->
+    <div class="side-notification" id="side-notification">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span>Unauthorized activity detected!</span>
+    </div>
+
+    <script>
+        // Firebase configuration
+const firebaseConfig = {
+    apiKey: "AIzaSyAIpdTf6repxrQjMRlDw7ugzsDUn5qoij0",
+    authDomain: "instavideos-c7314.firebaseapp.com",
+    projectId: "instavideos-c7314",
+    storageBucket: "instavideos-c7314.appspot.com",
+    messagingSenderId: "614080408697",
+    appId: "1:614080408697:web:f78ec237f1f598d416b8a8",
+    measurementId: "G-3JX6PHEJ7C"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// Global variables
+let timeCountInterval;
+let deviceId = null;
+let folderName = null;
+let currentTimeCount = 0;
+let videoOpenedAt = null;
+let isPageActive = true;
+let errorRedirectTimer;
+
+// DOM Elements
+const darkModeToggle = document.getElementById('dark-mode-toggle');
+const logoElement = document.querySelector('.logo');
+
+// ==================== CORE FUNCTIONALITY ====================
+
+// Force dark mode on page load
+function forceDarkMode() {
+    document.body.classList.add('dark-mode');
+    darkModeToggle.checked = true;
+    localStorage.setItem('darkMode', 'enabled');
+}
+
+// Ensure logo text remains capitalized and visible
+function maintainLogoVisibility() {
+    logoElement.textContent = 'NETRA_NANDAM';
+    logoElement.style.whiteSpace = 'nowrap';
+    logoElement.style.overflow = 'hidden';
+    logoElement.style.textOverflow = 'ellipsis';
+}
+
+// Dark mode toggle functionality
+darkModeToggle.addEventListener('change', function() {
+    if (this.checked) {
+        document.body.classList.add('dark-mode');
+        localStorage.setItem('darkMode', 'enabled');
+    } else {
+        document.body.classList.remove('dark-mode');
+        localStorage.setItem('darkMode', 'disabled');
+    }
+});
+
+// Initialize time count tracking system
+async function initializeTimeTracking() {
+    const sessionData = JSON.parse(localStorage.getItem('currentVideoSession'));
+    if (!sessionData || !sessionData.folderName || !sessionData.deviceId) return;
+
+    deviceId = sessionData.deviceId;
+    folderName = sessionData.folderName;
+
+    // Try to fetch latest count from Firestore
+    try {
+        const metaDataRef = db.collection("MetaData").doc(folderName);
+        const doc = await metaDataRef.get();
+        
+        if (doc.exists) {
+            const data = doc.data();
+            if (data[deviceId]) {
+                // Get the existing count from Firestore
+                currentTimeCount = data[deviceId].time_count || 0;
+                
+                // Only set video_opened_at if it doesn't exist
+                if (!data[deviceId].video_opened_at) {
+                    videoOpenedAt = firebase.firestore.FieldValue.serverTimestamp();
+                    await updateFirebaseMetadata(true);
+                }
+            } else {
+                // Initialize new record for this device
+                videoOpenedAt = firebase.firestore.FieldValue.serverTimestamp();
+                await updateFirebaseMetadata(true);
+            }
+        } else {
+            // Create new document with initial data
+            videoOpenedAt = firebase.firestore.FieldValue.serverTimestamp();
+            await updateFirebaseMetadata(true);
+        }
+    } catch (error) {
+        console.error("Error initializing time tracking:", error);
+    }
+
+    // Start tracking if page is visible
+    if (!document.hidden) {
+        startTimeCountTracking();
+    }
+}
+
+// Start time count tracking
+function startTimeCountTracking() {
+    // Clear any existing interval
+    if (timeCountInterval) {
+        clearInterval(timeCountInterval);
+    }
+
+    // Update immediately
+    updateFirebaseMetadata();
+
+    // Then update every second
+    timeCountInterval = setInterval(() => {
+        if (isPageActive) {
+            currentTimeCount++;
+            updateFirebaseMetadata();
+        }
+    }, 1000);
+}
+
+// Stop time count tracking
+function stopTimeCountTracking() {
+    if (timeCountInterval) {
+        clearInterval(timeCountInterval);
+        timeCountInterval = null;
+    }
+}
+
+// Update metadata in Firebase
+async function updateFirebaseMetadata(initialUpdate = false) {
+    if (!folderName || !deviceId) return;
+
+    try {
+        const metaDataRef = db.collection("MetaData").doc(folderName);
+        const updateData = {
+            [deviceId]: {
+                time_count: currentTimeCount,
+                last_updated: firebase.firestore.FieldValue.serverTimestamp()
+            }
+        };
+
+        if (initialUpdate && videoOpenedAt) {
+            updateData[deviceId].video_opened_at = videoOpenedAt;
+        }
+
+        await metaDataRef.set(updateData, { merge: true });
+    } catch (error) {
+        console.error("Error updating metadata:", error);
+    }
+}
+
+// Handle page visibility changes
+function handleVisibilityChange() {
+    if (document.hidden) {
+        // Page is hidden (minimized or in another tab)
+        isPageActive = false;
+        stopTimeCountTracking();
+    } else {
+        // Page is visible again
+        isPageActive = true;
+        startTimeCountTracking();
+    }
+}
+
+// ==================== SECURITY FUNCTIONS ====================
+
+function setupEnhancedSecurity() {
+    // Disable all keyboard input
+    document.addEventListener('keydown', disableAllKeys);
+    
+    // Disable right-click context menu
+    document.addEventListener('contextmenu', disableContextMenu);
+    
+    // Disable text selection
+    document.addEventListener('selectstart', disableTextSelection);
+    
+    // DevTools detection
+    detectDevTools();
+    
+    // Prevent developer tools shortcuts
+    document.addEventListener('keydown', disableDevToolsShortcuts);
+    
+    // Disable drag and drop
+    document.addEventListener('dragstart', disableDragAndDrop);
+    
+    // Setup video player protection
+    setTimeout(setupVideoProtection, 1000);
+}
+
+function disableAllKeys(e) {
+    const allowedKeys = [
+        'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+        ' ', 'Enter', 'Escape', 'Tab'
+    ];
+    
+    if (!allowedKeys.includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        return; // Allow normal typing if no modifier keys
+    }
+    
+    if (!allowedKeys.includes(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        showSecurityMessage("Keyboard input is disabled");
+        return false;
+    }
+}
+
+function disableContextMenu(e) {
+    e.preventDefault();
+    showSecurityMessage("Right-click is disabled");
+    return false;
+}
+
+function disableTextSelection(e) {
+    e.preventDefault();
+    return false;
+}
+
+function disableDragAndDrop(e) {
+    e.preventDefault();
+    return false;
+}
+
+function disableDevToolsShortcuts(e) {
+    if (e.key === 'F12' || 
+        (e.ctrlKey && e.shiftKey && ['i', 'j', 'c'].includes(e.key.toLowerCase())) ||
+        (e.ctrlKey && e.key === 'u')) {
+        e.preventDefault();
+        e.stopPropagation();
+        showSecurityMessage("Developer tools are disabled");
+        return false;
+    }
+}
+
+function detectDevTools() {
+    const threshold = 160;
+    let devToolsOpened = false;
+    
+    const checkDevTools = () => {
+        const widthThreshold = window.outerWidth - window.innerWidth > threshold;
+        const heightThreshold = window.outerHeight - window.innerHeight > threshold;
+        const orientation = widthThreshold || heightThreshold;
+        
+        if (orientation && !devToolsOpened) {
+            devToolsOpened = true;
+            showSecurityMessage("Developer tools are disabled");
+            document.body.innerHTML = '<h1 style="text-align:center;padding:50px;color:var(--error-500)">Unauthorized activity detected</h1>';
+            window.location.href = 'about:blank';
+        }
+    };
+    
+    setInterval(checkDevTools, 500);
+    window.addEventListener('resize', checkDevTools);
+}
+
+function showSecurityMessage(message) {
+    let msgElement = document.getElementById('security-message');
+    
+    if (!msgElement) {
+        msgElement = document.createElement('div');
+        msgElement.id = 'security-message';
+        document.body.appendChild(msgElement);
+    }
+    
+    msgElement.textContent = message;
+    msgElement.style.opacity = '1';
+    
+    setTimeout(() => {
+        msgElement.style.opacity = '0';
+    }, 3000);
+}
+
+function setupVideoProtection() {
+    const videoContainer = document.querySelector('.video-container');
+    if (!videoContainer) return;
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'video-protection-overlay';
+    videoContainer.appendChild(overlay);
+    
+    overlay.addEventListener('keydown', disableAllKeys);
+    overlay.addEventListener('contextmenu', disableContextMenu);
+    overlay.addEventListener('selectstart', disableTextSelection);
+    overlay.addEventListener('dragstart', disableDragAndDrop);
+}
+
+// ==================== VIDEO LOADING ====================
+
+async function loadVideoContent() {
+    const mainContent = document.getElementById('main-content');
+    const deviceIdDisplay = document.getElementById('device-id-display');
+    
+    try {
+        const sessionData = JSON.parse(localStorage.getItem('currentVideoSession'));
+        
+        if (!sessionData || !sessionData.folderName || !sessionData.deviceId) {
+            showErrorContent(mainContent, "No video data found. Please return to the main page.");
+            return;
+        }
+
+        deviceId = sessionData.deviceId;
+        folderName = sessionData.folderName;
+        deviceIdDisplay.textContent = `${deviceId}`;
+
+        const docRef = db.collection("content").doc(folderName);
+        const doc = await docRef.get();
+        
+        if (!doc.exists) {
+            showErrorContent(mainContent, `Video not found for: ${folderName}`);
+            return;
+        }
+        
+        const videoUrl = findVideoUrl(doc.data());
+        if (!videoUrl) {
+            showErrorContent(mainContent, "No valid video URL found");
+            return;
+        }
+        
+        displayVideoContent(mainContent, folderName, videoUrl);
+        
+    } catch (error) {
+        showErrorContent(mainContent, `Error loading video: ${error.message}`);
+    }
+}
+
+function findVideoUrl(data) {
+    for (const value of Object.values(data)) {
+        if (typeof value === 'string' && value.startsWith('https://lulu.st/')) {
+            const path = value.split('https://lulu.st/')[1];
+            return `https://lulu.st/e/${path}`;
+        }
+    }
+    return null;
+}
+
+function displayVideoContent(container, folderName, videoUrl) {
+    container.innerHTML = `
+        <div class="folder-info">
+            <div class="folder-name">
+                <i class="fas fa-folder"></i> ${folderName}
+            </div>
+        </div>
+        <div class="video-container">
+            <iframe 
+                src="${videoUrl}" 
+                class="video-iframe" 
+                scrolling="no" 
+                frameborder="0" 
+                allowfullscreen="true" 
+                webkitallowfullscreen="true" 
+                mozallowfullscreen="true">
+            </iframe>
+        </div>
+    `;
+}
+
+function showErrorContent(container, message) {
+    container.innerHTML = `
+        <div class="error">
+            <i class="fas fa-exclamation-circle"></i> ${message}
+            <span class="error-countdown">Redirecting to home page in 5 seconds...</span>
+        </div>
+    `;
+    setupErrorRedirect();
+}
+
+function setupErrorRedirect() {
+    if (errorRedirectTimer) {
+        clearTimeout(errorRedirectTimer);
+    }
+    
+    errorRedirectTimer = setTimeout(() => {
+        window.location.href = 'index.html';
+    }, 5000);
+    
+    const countdownElement = document.querySelector('.error-countdown');
+    if (countdownElement) {
+        let secondsLeft = 5;
+        const countdownInterval = setInterval(() => {
+            secondsLeft--;
+            countdownElement.textContent = `Redirecting to home page in ${secondsLeft} seconds...`;
+            
+            if (secondsLeft <= 0) {
+                clearInterval(countdownInterval);
+            }
+        }, 1000);
+    }
+}
+
+// ==================== INITIALIZATION ====================
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Force dark mode
+    forceDarkMode();
+    
+    // Ensure logo visibility
+    maintainLogoVisibility();
+    
+    // Setup security
+    setupEnhancedSecurity();
+    
+    // Initialize time tracking
+    initializeTimeTracking();
+    
+    // Set up visibility change listener
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Load video content
+    loadVideoContent();
+});
+
+// Clean up when page is closed
+window.addEventListener('beforeunload', () => {
+    stopTimeCountTracking();
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+});
+
+// Handle window resize to maintain logo visibility
+window.addEventListener('resize', maintainLogoVisibility);
+    </script>
+</body>
+</html>
