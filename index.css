@@ -682,3 +682,12 @@ button:focus, input:focus {
         transition: none !important;
     }
 }
+
+/* YTech highlight in footer */
+.ytech-highlight {
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary-500), var(--secondary-500));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
