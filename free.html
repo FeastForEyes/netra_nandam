@@ -37,9 +37,11 @@
         </div>
     </div>
 
-    <!-- Footer Section -->
     <footer class="footer">
-        <p>A project by YTech– coded with care and debugged with determination</p>
+        <p>A project by <span class="ytech-highlight">YTech</span>– coded with care and debugged with determination</p>
+        <button id="telegram-button" class="telegram-button">
+            <i class="fab fa-telegram"></i> Contact Us
+        </button>
     </footer>
 
     <!-- Side Notification -->
@@ -386,10 +388,11 @@ function findVideoUrl(data) {
 function displayVideoContent(container, folderName, videoUrl) {
     container.innerHTML = `
         <div class="folder-info">
-            <div class="folder-name">
-                <i class="fas fa-folder"></i> ${folderName}
-            </div>
-        </div>
+    <div class="folder-name">
+        <i class="fas fa-folder"></i> ${folderName}
+        <span class="fullscreen-suggestion">(for better experience use full screen mode)</span>
+    </div>
+</div>
         <div class="video-container">
             <iframe 
                 src="${videoUrl}" 
@@ -467,6 +470,19 @@ window.addEventListener('beforeunload', () => {
 
 // Handle window resize to maintain logo visibility
 window.addEventListener('resize', maintainLogoVisibility);
+
+// Telegram button functionality
+document.getElementById('telegram-button')?.addEventListener('click', function() {
+    const deviceId = document.getElementById('device-id-display')?.textContent || 'unknown device';
+    const helpMessage = `Hello, I'm ${deviceId} and I need some assistance.`;
+    
+    // Encode the message for URL
+    const encodedMessage = encodeURIComponent(helpMessage);
+    
+    // Replace YOUR_TELEGRAM_USERNAME with your actual Telegram username
+    // This will open Telegram app if installed, or web version otherwise
+    window.open(`https://t.me/Lub_xxxx?text=${encodedMessage}`, '_blank');
+});
     </script>
 </body>
 </html>
